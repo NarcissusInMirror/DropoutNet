@@ -124,7 +124,7 @@ def main():
                 n_targets = len(target_scores)
                 perm = np.random.permutation(n_targets)
                 n_targets = min(n_targets, max_data_per_step)
-                data_batch = [(n, min(n + data_batch_size, n_targets)) for n in xrange(0, n_targets, data_batch_size)]
+                data_batch = [(n, min(n + data_batch_size, n_targets)) for n in range(0, n_targets, data_batch_size)]
                 f_batch = 0
                 gen = data_batch
                 if args.progress:

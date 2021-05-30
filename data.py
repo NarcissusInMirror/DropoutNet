@@ -13,7 +13,7 @@ def load_eval_data(test_file, test_id_file, name, cold, train_data, citeu=False)
     timer = utils.timer()
     with open(test_id_file) as f:
         test_item_ids = [int(line) for line in f]
-        test_data = pd.read_csv(test_file, delimiter=",", header=-1, dtype=np.int32).values.ravel()
+        test_data = pd.read_csv(test_file, delimiter=",", header=None, dtype=np.int32).values.ravel()
         if citeu:
             test_data = test_data.view(
             dtype=[('uid', np.int32), ('iid', np.int32), ('inter', np.int32)])
@@ -69,24 +69,30 @@ class EvalData:
 
         self.is_cold = is_cold
 
-        self.test_item_ids = test_item_ids
+        self.test_item_ids = test_item_ids  # id列表
         # test_item_ids_map
-        self.test_item_ids_map = {iid: i for i, iid in enumerate(self.test_item_ids)}
+        self.test_item_ids_map = {iid: i for i, iid in enumerate(self.test_item_ids)} # 商品id：自然序号
 
+        # 如果test interaction中的商品id出现在冷启动item的列表中，就把(userid, itemid)存出来
         _test_ij_for_inf = [(t[0], t[1]) for t in test_triplets if t[1] in self.test_item_ids_map]
+
         # test_user_ids
         self.test_user_ids = np.unique(test_triplets['uid'])
         # test_user_ids_map
-        self.test_user_ids_map = {user_id: i for i, user_id in enumerate(self.test_user_ids)}
+        self.test_user_ids_map = {user_id: i for i, user_id in enumerate(self.test_user_ids)}  # 用户id：自然序号
 
-        _test_i_for_inf = [self.test_user_ids_map[_t[0]] for _t in _test_ij_for_inf]
-        _test_j_for_inf = [self.test_item_ids_map[_t[1]] for _t in _test_ij_for_inf]
+        _test_i_for_inf = [self.test_user_ids_map[_t[0]] for _t in _test_ij_for_inf]  # []
+        _test_j_for_inf = [self.test_item_ids_map[_t[1]] for _t in _test_ij_for_inf]  # []
+
+        # coo_matrix(填入的值，填入值对应坐标，生成矩阵形状)
+        # 这里就是为测试集生成一个共现矩阵
         self.R_test_inf = scipy.sparse.coo_matrix(
             (np.ones(len(_test_i_for_inf)),
              (_test_i_for_inf, _test_j_for_inf)),
             shape=[len(self.test_user_ids), len(self.test_item_ids)]
         ).tolil(copy=False)
 
+        # 对于训练集中的每一条interaction，如果userid出现在test中且itemid出现在test中，说明冷启动出现泄漏
         train_ij_for_inf = [(self.test_user_ids_map[_t[0]], self.test_item_ids_map[_t[1]]) for _t
                             in train
                             if _t[1] in self.test_item_ids_map and _t[0] in self.test_user_ids_map]
@@ -109,7 +115,7 @@ class EvalData:
         self.eval_batch = None
 
     def init_tf(self, user_factors, item_factors, user_content, item_content, eval_run_batchsize):
-        self.U_pref_test = user_factors[self.test_user_ids, :]
+        self.U_pref_test = user_factors[self.test_user_ids, :] # 直接取了
         self.V_pref_test = item_factors[self.test_item_ids, :]
         self.V_content_test = item_content[self.test_item_ids, :]
         if scipy.sparse.issparse(self.V_content_test):
@@ -120,7 +126,7 @@ class EvalData:
                 self.U_content_test = self.U_content_test.todense()
         eval_l = self.R_test_inf.shape[0]
         self.eval_batch = [(x, min(x + eval_run_batchsize, eval_l)) for x
-                           in xrange(0, eval_l, eval_run_batchsize)]
+                           in range(0, eval_l, eval_run_batchsize)]
 
         self.tf_eval_train = []
         self.tf_eval_test = []
@@ -129,10 +135,11 @@ class EvalData:
             for (eval_start, eval_finish) in self.eval_batch:
                 _ui = self.R_train_inf[eval_start:eval_finish, :].tocoo()
                 _ui = zip(_ui.row, _ui.col)
+                length = sum(1 for _ in _ui)
                 self.tf_eval_train.append(
                     tf.SparseTensorValue(
                         indices=_ui,
-                        values=np.full(len(_ui), -100000, dtype=np.float32),
+                        values=np.full(length, -100000, dtype=np.float32),
                         dense_shape=[eval_finish - eval_start, self.R_train_inf.shape[1]]
                     )
                 )

@@ -52,9 +52,9 @@ class DeepCF:
 
     def __init__(self, latent_rank_in, user_content_rank, item_content_rank, model_select, rank_out):
 
-        self.rank_in = latent_rank_in
-        self.phi_u_dim = user_content_rank
-        self.phi_v_dim = item_content_rank
+        self.rank_in = latent_rank_in # 200
+        self.phi_u_dim = user_content_rank # 2738
+        self.phi_v_dim = item_content_rank # 831
         self.model_select = model_select
         self.rank_out = rank_out
 
@@ -101,17 +101,20 @@ class DeepCF:
         self.phase = tf.placeholder(tf.bool, name='phase')
         self.target = tf.placeholder(tf.float32, shape=[None], name='target')
 
+        # user和item的preference隐向量
         self.Uin = tf.placeholder(tf.float32, shape=[None, self.rank_in], name='U_in_raw')
         self.Vin = tf.placeholder(tf.float32, shape=[None, self.rank_in], name='V_in_raw')
+
+        # user和item的content向量
         if self.phi_u_dim>0:
             self.Ucontent = tf.placeholder(tf.float32, shape=[None, self.phi_u_dim], name='U_content')
-            u_concat = tf.concat([self.Uin, self.Ucontent], 1)
+            u_concat = tf.concat([self.Uin, self.Ucontent], 1)  # 将preference和content连接
         else:
             u_concat = self.Uin
 
         if self.phi_v_dim>0:
             self.Vcontent = tf.placeholder(tf.float32, shape=[None, self.phi_v_dim], name='V_content')
-            v_concat = tf.concat([self.Vin, self.Vcontent], 1)
+            v_concat = tf.concat([self.Vin, self.Vcontent], 1)  # 将preference和content连接
         else:
             v_concat = self.Vin
 
@@ -120,7 +123,7 @@ class DeepCF:
 
         u_last = u_concat
         v_last = v_concat
-        for ihid, hid in enumerate(self.model_select):
+        for ihid, hid in enumerate(self.model_select): # [800, 400]
             u_last = dense_batch_fc_tanh(u_last, hid, self.phase, 'user_layer_%d' % (ihid + 1), do_norm=True)
             v_last = dense_batch_fc_tanh(v_last, hid, self.phase, 'item_layer_%d' % (ihid + 1), do_norm=True)
 
@@ -137,8 +140,8 @@ class DeepCF:
             self.V_embedding = tf.matmul(v_last, v_emb_w) + v_emb_b
 
         with tf.variable_scope("loss"):
-            preds = tf.multiply(self.U_embedding, self.V_embedding)
-            self.preds = tf.reduce_sum(preds, 1)
+            preds = tf.multiply(self.U_embedding, self.V_embedding) # (b, 200)
+            self.preds = tf.reduce_sum(preds, 1) # (b,)
             self.loss = tf.reduce_mean(tf.squared_difference(self.preds, self.target))
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -171,11 +174,14 @@ class DeepCF:
             self.U_pref_tf = tf.placeholder(tf.float32, shape=[None, self.rank_in], name='u_pref')
             self.V_pref_tf = tf.placeholder(tf.float32, shape=[None, self.rank_in], name='v_pref')
             self.rand_target_ui = tf.placeholder(tf.int32, shape=[None, None], name='rand_target_ui')
+            # (b, 广告数目) 即（b,1306055)，矩阵的意义为b个user和每一个广告的内积，即匹配度
             preds_pref = tf.matmul(self.U_pref_tf, self.V_pref_tf, transpose_b=True)
+            # axis=0上的每个维度取topk，即每个user取num_candidates个最匹配的item，这里numcandidate就是2500
+            # 形状均为(b * topk)
             tf_topk_vals, tf_topk_inds = tf.nn.top_k(preds_pref, k=num_candidates, sorted=True, name='top_targets')
-            self.tf_topk_vals = tf.reshape(tf_topk_vals, [-1], name='select_y_vals')
-            self.tf_topk_inds = tf.reshape(tf_topk_inds, [-1], name='select_y_inds')
-            preds_random = tf.gather_nd(preds_pref, self.rand_target_ui)
+            self.tf_topk_vals = tf.reshape(tf_topk_vals, [-1], name='select_y_vals') # (b*topk, ) 即（b*2500)
+            self.tf_topk_inds = tf.reshape(tf_topk_inds, [-1], name='select_y_inds') # (b*topk, ) 即（b*2500)
+            preds_random = tf.gather_nd(preds_pref, self.rand_target_ui) # (b*top_k, )
             self.preds_random = tf.reshape(preds_random, [-1], name='random_y_inds')
 
         # tf matmul-topk to get eval on latent

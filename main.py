@@ -58,10 +58,11 @@ def main():
     timer = utils.timer(name='main').tic()
 
     # append pref factors for faster dropout
+    # 在preference矩阵最后一行加上全零
     v_pref_expanded = np.vstack([v_pref_scaled, np.zeros_like(v_pref_scaled[0, :])])
-    v_pref_last = v_pref_scaled.shape[0]
+    v_pref_last = v_pref_scaled.shape[0] # 最后一行的索引
     u_pref_expanded = np.vstack([u_pref_scaled, np.zeros_like(u_pref_scaled[0, :])])
-    u_pref_last = u_pref_scaled.shape[0]
+    u_pref_last = u_pref_scaled.shape[0] # 最后一行值索引
     timer.toc('initialized numpy data for tf')
 
     # prep eval
@@ -74,11 +75,11 @@ def main():
     eval_cold_item.init_tf(u_pref_scaled, v_pref_scaled, user_content, item_content, eval_batch_size)
     timer.toc('initialized eval_cold_item for tf').tic()
 
-    dropout_net = model.DeepCF(latent_rank_in=u_pref.shape[1],
-                               user_content_rank=user_content.shape[1],
-                               item_content_rank=item_content.shape[1],
+    dropout_net = model.DeepCF(latent_rank_in=u_pref.shape[1],  # 200
+                               user_content_rank=user_content.shape[1],  # 2738
+                               item_content_rank=item_content.shape[1],  # 831
                                model_select=model_select,
-                               rank_out=rank_out)
+                               rank_out=rank_out) # 200
 
     config = tf.ConfigProto(allow_soft_placement=True)
 
@@ -96,7 +97,7 @@ def main():
         tf.local_variables_initializer().run()
         timer.toc('initialized tf')
 
-        row_index = np.copy(user_indices)
+        row_index = np.copy(user_indices) # (1064238,) 用户的原始编号
         n_step = 0
         best_cold_user = 0
         best_cold_item = 0
@@ -105,41 +106,53 @@ def main():
         best_step = 0
         for epoch in range(num_epoch):
             np.random.shuffle(row_index)
-            for b in utils.batch(row_index, user_batch_size):
+            for b in utils.batch(row_index, user_batch_size): # b是抽出的一个batch的userid
                 n_step += 1
                 # prep targets
-                target_users = np.repeat(b, n_scores_user)
+                # 将用户真实的id每个重复n_scores_user，即2500遍
+                target_users = np.repeat(b, n_scores_user) # 将userid重复n_scores_user，即2500遍
+                # 将序号重复2500遍 [0*2500, 1*2500 ... batchsize*2500] 总长度为(batchsize*2500, )
                 target_users_rand = np.repeat(np.arange(len(b)), n_scores_user)
+                # 生成一个长度为(bathsize, 2500)，值为item自然序号随机采样的array
+                # 每个batch随机抽了2500个item的自然序号
                 target_items_rand = [np.random.choice(v_pref.shape[0], n_scores_user) for _ in b]
-                target_items_rand = np.array(target_items_rand).flatten()
+                target_items_rand = np.array(target_items_rand).flatten() # (batchsize*2500, )
+                # 两行，均重复2500遍 (2, batchsize*2500).tanspose = (batchsize*2500, 2)
+                # 第一行是user的自然序号0-batchsize
+                # 第二行是随机挑的item序号
                 target_ui_rand = np.transpose(np.vstack([target_users_rand, target_items_rand]))
+                # tf_topk_vals: (b*topk,)，每个用户对应的topk个匹配物品的匹配值
+                # tf_topk_inds: (b*topk,)，每个用户对应的topk个匹配物品的对应的索引
+                # preds_random: (b*topk,)每个用户随机挑的topk个匹配物品的匹配值
                 [target_scores, target_items, random_scores] = sess.run(
                     [dropout_net.tf_topk_vals, dropout_net.tf_topk_inds, dropout_net.preds_random],
                     feed_dict={
-                        dropout_net.U_pref_tf: u_pref[b, :],
-                        dropout_net.V_pref_tf: v_pref,
-                        dropout_net.rand_target_ui: target_ui_rand
+                        dropout_net.U_pref_tf: u_pref[b, :],  # (b, 200)
+                        dropout_net.V_pref_tf: v_pref,  # (1306055 * 200)
+                        dropout_net.rand_target_ui: target_ui_rand  # (batch size * 2500, 2)
                     }
                 )
                 # merge topN and randomN items per user
-                target_scores = np.append(target_scores, random_scores)
-                target_items = np.append(target_items, target_items_rand)
-                target_users = np.append(target_users, target_users)
+                # 以下三个向量均为
+                # (b * topk * 2, ) 1000*2500*2 = (5000000,)
+                target_scores = np.append(target_scores, random_scores) # topk匹配得分 + 随机匹配得分
+                target_items = np.append(target_items, target_items_rand) # topk匹配商品index + 随机商品index
+                target_users = np.append(target_users, target_users) # 用户index + 用户index
 
                 tf.local_variables_initializer().run()
-                n_targets = len(target_scores)
-                perm = np.random.permutation(n_targets)
+                n_targets = len(target_scores) # （b*topk*2, ) 1000*2500*2
+                perm = np.random.permutation(n_targets) # 一个0~n_target-1的随机排列
                 n_targets = min(n_targets, max_data_per_step)
-                data_batch = [(n, min(n + data_batch_size, n_targets)) for n in xrange(0, n_targets, data_batch_size)]
+                data_batch = [(n, min(n + data_batch_size, n_targets)) for n in range(0, n_targets, data_batch_size)]
                 f_batch = 0
                 for (start, stop) in data_batch:
                     batch_perm = perm[start:stop]
-                    batch_users = target_users[batch_perm]
-                    batch_items = target_items[batch_perm]
+                    batch_users = target_users[batch_perm] # 随机采样100个用户的序号
+                    batch_items = target_items[batch_perm] # 随机采样100个对应的商品的序号
                     if dropout != 0:
                         n_to_drop = int(np.floor(dropout * len(batch_perm)))
-                        perm_user = np.random.permutation(len(batch_perm))[:n_to_drop]
-                        perm_item = np.random.permutation(len(batch_perm))[:n_to_drop]
+                        perm_user = np.random.permutation(len(batch_perm))[:n_to_drop] # 随机挑n_to_drop个user drop
+                        perm_item = np.random.permutation(len(batch_perm))[:n_to_drop] # 随机挑n_to_drop个item drop
                         batch_v_pref = np.copy(batch_items)
                         batch_u_pref = np.copy(batch_users)
                         batch_v_pref[perm_user] = v_pref_last
@@ -151,12 +164,12 @@ def main():
                     _, _, loss_out = sess.run(
                         [dropout_net.preds, dropout_net.updates, dropout_net.loss],
                         feed_dict={
-                            dropout_net.Uin: u_pref_expanded[batch_u_pref, :],
-                            dropout_net.Vin: v_pref_expanded[batch_v_pref, :],
+                            dropout_net.Uin: u_pref_expanded[batch_u_pref, :], # (b, 200)
+                            dropout_net.Vin: v_pref_expanded[batch_v_pref, :], # (b, 200)
                             dropout_net.Ucontent: user_content[batch_users, :].todense(),
                             dropout_net.Vcontent: item_content[batch_items, :].todense(),
                             #
-                            dropout_net.target: target_scores[batch_perm],
+                            dropout_net.target: target_scores[batch_perm], # (b,)
                             dropout_net.lr_placeholder: _lr,
                             dropout_net.phase: 1
                         }
@@ -233,24 +246,24 @@ def load_data(data_path):
     test_cold_item_iid_file = os.path.join(split_folder, 'test_cold_item_item_ids.csv')
 
     dat = {}
-    # load preference data
+    # load preference data 载入偏好信息，是已经训练好的隐向量
     timer.tic()
-    u_pref = np.fromfile(u_file, dtype=np.float32).reshape(n_users, 200)
-    v_pref = np.fromfile(v_file, dtype=np.float32).reshape(n_items, 200)
+    u_pref = np.fromfile(u_file, dtype=np.float32).reshape(n_users, 200)  # 1497021 * 200
+    v_pref = np.fromfile(v_file, dtype=np.float32).reshape(n_items, 200)  # 1306055 * 200
     dat['u_pref'] = u_pref
     dat['v_pref'] = v_pref
 
     timer.toc('loaded U:%s,V:%s' % (str(u_pref.shape), str(v_pref.shape))).tic()
 
-    # pre-process
+    # pre-process 标准化
     _, dat['u_pref_scaled'] = utils.prep_standardize(u_pref)
     _, dat['v_pref_scaled'] = utils.prep_standardize(v_pref)
     timer.toc('standardized U,V').tic()
 
-    # load content data
+    # load content data 载入内容信息，是libsvm格式的输入，用户信息有831维，商品信息有2738维
     timer.tic()
-    user_content, _ = datasets.load_svmlight_file(user_content_file, zero_based=True, dtype=np.float32)
-    dat['user_content'] = user_content.tolil(copy=False)
+    user_content, _ = datasets.load_svmlight_file(user_content_file, zero_based=True, dtype=np.float32) # sklearn的api
+    dat['user_content'] = user_content.tolil(copy=False) # to linkedlist
     timer.toc('loaded user feature sparse matrix: %s' % (str(user_content.shape))).tic()
     item_content, _ = datasets.load_svmlight_file(item_content_file, zero_based=True, dtype=np.float32)
     dat['item_content'] = item_content.tolil(copy=False)
@@ -258,16 +271,42 @@ def load_data(data_path):
 
     # load split
     timer.tic()
-    train = pd.read_csv(train_file, delimiter=",", header=-1, dtype=np.int32).values.ravel().view(
+    # train 是一个形如[(      1,  46763, 0, 1483991416) (      1, 173483, 0, 1483991262)
+    #  (      1, 284109, 0, 1483991416) ... (1485180, 640382, 5, 1482850784)
+    #  (1490693, 124350, 5, 1484722919) (1490693, 472666, 5, 1484722919)]的由四元组组成的ndarray
+    # read train triplets 19433737
+    train = pd.read_csv(train_file, delimiter=",", header=None, dtype=np.int32).values.ravel().view(
         dtype=[('uid', np.int32), ('iid', np.int32), ('inter', np.int32), ('date', np.int32)])
-    dat['user_indices'] = np.unique(train['uid'])
+
+    dat['user_indices'] = np.unique(train['uid']) # (1064238,)
     timer.toc('read train triplets %s' % train.shape).tic()
+
+    # loaded eval_warm read eval_warm triplets (456121,)
+    # n_test_users:[124961]
+    # n_test_items:[62435]
+    # R_train_inf: shape=(124961, 62435) nnz=[1250413]
+    # R_test_inf: shape=(124961, 62435) nnz=[426796]
 
     dat['eval_warm'] = data.load_eval_data(test_warm_file, test_warm_iid_file, name='eval_warm', cold=False,
                                            train_data=train)
+
+    # loaded eval_cold_user read eval_cold_user triplets (169480,) elapsed [0 s]
+    # n_test_users:[47755]
+    # n_test_items:[42153]
+    # R_train_inf: no R_train_inf for cold
+    # R_test_inf: shape=(47755, 42153) nnz=[159185]
+
     dat['eval_cold_user'] = data.load_eval_data(test_cold_user_file, test_cold_user_iid_file, name='eval_cold_user',
                                                 cold=True,
                                                 train_data=train)
+
+    # [default] read eval_cold_item triplets (199028,)
+    # [default] loaded eval_cold_item elapsed
+    # n_test_users:[85342]
+    # n_test_items:[49975]
+    # R_train_inf: no R_train_inf for cold
+    # R_test_inf: shape=(85342, 49975) nnz=[183831]
+
     dat['eval_cold_item'] = data.load_eval_data(test_cold_item_file, test_cold_item_iid_file, name='eval_cold_item',
                                                 cold=True,
                                                 train_data=train)

@@ -34,24 +34,7 @@ To run the model, download the dataset from [here](https://s3.amazonaws.com/publ
 With this dataset we have also included pre-trained Weighted 
 Factorization model (WMF)\[Hu et al., 2008\], that is used as preference input to the DropoutNet. WMF produces competitive performance on warm start but doesn't generalize to cold start. So this code demonstrates how to apply DropoutNet to provide cold start capability to WMF. The format of the data is as follows:
 ```
-recsys2017.pub				
-└─ eval					// use path to this folder in --data-dir
-   ├─ trained				// WMF model
-   │  └─ warm				
-   │     ├─ U.csv.bin			// numpy binarized WMF user preference latent vectors (U)
-   │     └─ V.csv.bin			// numpy binarized WMF item preference latent vectors (V)
-   ├─ warm				
-   │  ├─ test_cold_item.csv		// validation interactions for item cold start 
-   │  ├─ test_cold_item_item_ids.csv	// targets item ids for item cold start
-   │  ├─ test_cold_user.csv    		// validation interactions for user cold start
-   │  ├─ test_cold_user_item_ids.csv	// target user ids for user cold start
-   │  ├─ test_warm.csv			// validation interactions for warm start
-   │  ├─ test_warm_item_ids.csv		// target item ids for warm start
-   │  └─ train.csv			// training interactions
-   ├─ item_features_0based.txt		// item features in libsvm format
-   └─ user_features_0based.txt		// user features in libsvm format
-      
-interactions are stored in csv as:
+interactions are stored in csv as: 互动的格式如下
   <USER_ID>,<ITEM_ID>,<INTERACTION_TYPE>,<TIMESTAMP>
 where INTERACTION_TYPE is one of:
   0: impression
@@ -59,6 +42,29 @@ where INTERACTION_TYPE is one of:
   2: bookmark
   3: reply
   5: recruiter interest
+
+recsys2017.pub				
+└─ eval					// use path to this folder in --data-dir
+   ├─ trained				// WMF model
+   │  └─ warm				
+   │     ├─ U.csv.bin			// numpy binarized WMF user preference latent vectors (U) 训练好的user隐向量 1497021 * 200
+   │     └─ V.csv.bin			// numpy binarized WMF item preference latent vectors (V) 训练好的item隐向量 1306055 * 200
+   ├─ warm				
+   │  ├─ test_cold_item.csv		// validation interactions for item cold start 冷启动物品的验证互动情况  199028行
+   │  ├─ test_cold_item_item_ids.csv	// targets item ids for item cold start 冷启动物品的id，每行只有一个id 49975行
+   │  ├─ test_cold_user.csv    		// validation interactions for user cold start 冷启动用户的验证互动情况 169480行
+   │  ├─ test_cold_user_item_ids.csv	// target user ids for user cold start 冷启动用户的id，每行只有一个id  42153行 根据eval loader中的代码，怀疑这里的格式是<ITEM_ID>,<USER_ID>,<INTERACTION_TYPE>,<TIMESTAMP>
+   │  ├─ test_warm.csv			// validation interactions for warm start 热启动的验证互动情况 456121行
+   │  ├─ test_warm_item_ids.csv		// target item ids for warm start 热启动的物品id 62435行
+   │  └─ train.csv			// training interactions 用于训练的互动  19433737行
+   ├─ item_features_0based.txt		// item features in libsvm format 1497021 * 831 
+   └─ user_features_0based.txt		// user features in libsvm format 1306055 * 2738
+
+libsvm使用的训练数据和检验数据文件格式如下：
+[label] [index1]:[value1] [index2]:[value2] …
+[label] [index1]:[value1] [index2]:[value2] 
+
+
 ```
 
 <a name="demo"/>
