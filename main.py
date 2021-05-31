@@ -1,3 +1,4 @@
+#coding=utf-8
 import utils
 import numpy as np
 import pandas as pd
@@ -29,7 +30,7 @@ def main():
     eval_batch_size = 1000
     max_data_per_step = 2500000
     eval_every = args.eval_every
-    num_epoch = 10
+    num_epoch = 20
 
     _lr = args.lr
     _decay_lr_every = 50
@@ -186,15 +187,17 @@ def main():
                     recall_warm = utils.batch_eval_recall(
                         sess, dropout_net.eval_preds_warm, eval_feed_dict=dropout_net.get_eval_dict,
                         recall_k=recall_at, eval_data=eval_warm)
-                    recall_cold_user = utils.batch_eval_recall(
-                        sess, dropout_net.eval_preds_cold,
-                        eval_feed_dict=dropout_net.get_eval_dict,
-                        recall_k=recall_at, eval_data=eval_cold_user)
+                    print(recall_warm)
                     recall_cold_item = utils.batch_eval_recall(
                         sess, dropout_net.eval_preds_cold,
                         eval_feed_dict=dropout_net.get_eval_dict,
                         recall_k=recall_at, eval_data=eval_cold_item)
-
+                    print(recall_cold_item)
+                    recall_cold_user = utils.batch_eval_recall(
+                        sess, dropout_net.eval_preds_cold,
+                        eval_feed_dict=dropout_net.get_eval_dict,
+                        recall_k=recall_at, eval_data=eval_cold_user)
+                    print(recall_cold_user)
                     # checkpoint
                     if np.sum(recall_warm + recall_cold_user + recall_cold_item) > np.sum(
                                             best_warm + best_cold_user + best_cold_item):
@@ -262,9 +265,11 @@ def load_data(data_path):
 
     # load content data 载入内容信息，是libsvm格式的输入，用户信息有831维，商品信息有2738维
     timer.tic()
+    # (1497021, 831)
     user_content, _ = datasets.load_svmlight_file(user_content_file, zero_based=True, dtype=np.float32) # sklearn的api
     dat['user_content'] = user_content.tolil(copy=False) # to linkedlist
     timer.toc('loaded user feature sparse matrix: %s' % (str(user_content.shape))).tic()
+    # (1306055, 2738) 
     item_content, _ = datasets.load_svmlight_file(item_content_file, zero_based=True, dtype=np.float32)
     dat['item_content'] = item_content.tolil(copy=False)
     timer.toc('loaded item feature sparse matrix: %s' % (str(item_content.shape))).tic()
@@ -331,7 +336,7 @@ if __name__ == "__main__":
                         )
     parser.add_argument('--rank', type=int, default=200, help='output rank of latent model')
     parser.add_argument('--dropout', type=float, default=0.5, help='DropoutNet dropout')
-    parser.add_argument('--eval-every', type=int, default=2, help='evaluate every X user-batch')
+    parser.add_argument('--eval-every', type=int, default=1, help='evaluate every X user-batch')
     parser.add_argument('--lr', type=float, default=0.005, help='starting learning rate')
 
     args = parser.parse_args()

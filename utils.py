@@ -1,3 +1,4 @@
+#coding=utf-8
 import time
 import datetime
 import numpy as np
@@ -134,6 +135,11 @@ def batch_eval_recall(_sess, tf_eval, eval_feed_dict, recall_k, eval_data):
     """
     tf_eval_preds_batch = []
     for (batch, (eval_start, eval_stop)) in enumerate(eval_data.eval_batch):
+        # print(type(batch))
+        # print(type(eval_start), type(eval_stop))
+        # print(eval_start, eval_stop) # 0，1000
+        # print(type(tf_eval))
+        # print(type(eval_data))
         tf_eval_preds = _sess.run(tf_eval,
                                   feed_dict=eval_feed_dict(
                                       batch, eval_start, eval_stop, eval_data))

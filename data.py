@@ -1,3 +1,4 @@
+#coding=utf-8
 import numpy as np
 import tensorflow as tf
 import scipy.sparse
@@ -115,18 +116,19 @@ class EvalData:
         self.eval_batch = None
 
     def init_tf(self, user_factors, item_factors, user_content, item_content, eval_run_batchsize):
-        self.U_pref_test = user_factors[self.test_user_ids, :] # 直接取了
-        self.V_pref_test = item_factors[self.test_item_ids, :]
-        self.V_content_test = item_content[self.test_item_ids, :]
+        self.U_pref_test = user_factors[self.test_user_ids, :] # (len(self.test_user_ids), 200)
+        self.V_pref_test = item_factors[self.test_item_ids, :] # (len(self.test_item_ids), 200)
+        self.V_content_test = item_content[self.test_item_ids, :] # (len(self.test_item_ids), 2738)
         if scipy.sparse.issparse(self.V_content_test):
             self.V_content_test = self.V_content_test.todense()
         if user_content!=None:
-            self.U_content_test = user_content[self.test_user_ids, :]
+            self.U_content_test = user_content[self.test_user_ids, :] # (len(self.test_user_ids), 831)
             if scipy.sparse.issparse(self.U_content_test):
                 self.U_content_test = self.U_content_test.todense()
-        eval_l = self.R_test_inf.shape[0]
+        
+        eval_l = self.R_test_inf.shape[0] # user数目
         self.eval_batch = [(x, min(x + eval_run_batchsize, eval_l)) for x
-                           in range(0, eval_l, eval_run_batchsize)]
+                           in xrange(0, eval_l, eval_run_batchsize)]
 
         self.tf_eval_train = []
         self.tf_eval_test = []

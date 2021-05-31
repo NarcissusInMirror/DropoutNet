@@ -1,3 +1,4 @@
+#coding=utf-8
 import tensorflow as tf
 
 
@@ -193,6 +194,8 @@ class DeepCF:
 
     def get_eval_dict(self, _i, _eval_start, _eval_finish, eval_data):
         """
+        此方法返回一个字典给sees.run中的feed_dict参数
+
         packaging method to iterate evaluation data, select from start:finish
         should be passed directly to batch method
 
@@ -208,6 +211,13 @@ class DeepCF:
             self.Vcontent: eval_data.V_content_test,
             self.phase: 0
         }
+
+        # print(type(eval_data.U_pref_test[_eval_start:_eval_finish, :]))
+        # print(type(eval_data.U_content_test[_eval_start:_eval_finish, :]))
+        # print(type(eval_data.V_pref_test))
+        # print(type(eval_data.V_content_test))
+
+
         if self.Ucontent!=None: 
             _eval_dict[self.Ucontent]= eval_data.U_content_test[_eval_start:_eval_finish, :]
         if not eval_data.is_cold:
